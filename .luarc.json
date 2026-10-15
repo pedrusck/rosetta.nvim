@@ -1,0 +1,9 @@
+{
+  "runtime.version": "LuaJIT",
+  "runtime.path": ["?.lua", "?/init.lua", "lua/?.lua", "lua/?/init.lua"],
+  "workspace.checkThirdParty": false,
+  "workspace.library": ["${env:VIMRUNTIME}/lua"],
+  "workspace.ignoreDir": [".git", ".opencode", ".ruff_cache", ".rumdl_cache"],
+  "diagnostics.globals": ["vim", "test", "eq", "drain"],
+  "telemetry.enable": false
+}

@@ -1,0 +1,40 @@
+[tasks.test]
+description = "Run the isolated Neovim regression suite"
+run = "nvim --headless -u NONE -i NONE --noplugin -n -l tests/run.lua"
+
+[tasks.format]
+description = "Format all Lua files with StyLua"
+run = "stylua lua plugin tests"
+
+[tasks.format-check]
+description = "Check Lua formatting without modifying files"
+run = "stylua --check lua plugin tests"
+
+[tasks.lint]
+description = "Run LuaLS diagnostics with the current Neovim runtime metadata"
+run = "nvim --headless -u NONE -i NONE --noplugin -n -l tests/lint.lua"
+
+[tasks.check]
+description = "Check formatting, lint, and test in order, stopping on failure"
+run = [
+  { task = "format-check" },
+  { task = "lint" },
+  { task = "test" }
+]
+
+[tasks.updateModels]
+description = "Update available LLM models on adesso AI Hub for the MAXIKraft project"
+run = """
+#!/usr/bin/env zsh
+API_KEY=$MAXIKRAFT_AI_HUB_OPENCODE_KEY ~/.config/zsh/zsh_functions/opencode_update_provider_models "MAXIKraft (adesso AI Hub)" "https://adesso-ai-hub.3asabc.de/v1" "$OPENCODE_CONFIG"
+"""
+
+[tasks.updateSubmodules]
+description = "Update all git submodules"
+run = [
+  "git submodule sync --recursive",
+  "git submodule update --init --recursive"
+]
+
+[tools]
+"stylua" = "latest"
