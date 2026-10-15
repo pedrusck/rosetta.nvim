@@ -1,0 +1,242 @@
+*rosetta.txt*	Translation and proofreading workbench
+
+ROSETTA                                                        *rosetta*
+
+Rosetta is a Lua plugin for Neovim. Start with :Rosetta, edit a language
+buffer, and run :Rosetta run to translate the entire unsaved source into all
+eligible target buffers. Checking is independent of translation.
+
+Neovim 0.12.5+ and curl are required for translation. Telescope and Plenary
+are required for pickers. LTeX+ and native dictionaries are optional and
+user-provisioned. No tools or dictionaries are installed by Rosetta.
+
+Loading, requiring, configuring, and command completion never activate the
+workbench or fetch credentials. See |rosetta-config| and |rosetta-api|.
+
+COMMANDS                                                       *rosetta-commands*
+                                                               *:Rosetta*
+:Rosetta
+:Rosetta start [languages...]
+    Start/restore with configured defaults, or replace the ordered language
+    list with the supplied arguments. Defaults: ca de en. Aliases cat/deu/eng
+    and explicit variants such as en-GB are accepted. At least two distinct
+    language identities are required; en-US en-GB is a duplicate.
+
+:Rosetta run
+    Translate from the current registered loaded buffer. All eligible targets
+    dispatch in parallel after complete prompt/budget preflight. Empty source
+    is a no-op. Never uses remembered focus or queues premature runs.
+
+:Rosetta stop
+    Cancel provider preparation, probes, and translation. Keep buffers, text,
+    session files, checker clients, and remembered languages.
+
+:Rosetta layout
+    Restore remembered languages and missing panes; activate if stopped.
+    Missing registrations are restored empty. Retry columns explicitly.
+
+:Rosetta reconnect
+    Active workbench only. Cancel old provider work, capture current provider
+    configuration, reload credentials, discover models, and probe selection.
+
+:Rosetta model
+    Active credentials and discovery required. Open Telescope model picker.
+    A new selection is probed without cancelling captured translations.
+
+:Rosetta variant
+    Pick a variant of the current registered buffer, including while stopped.
+    Stale resumed pickers reject selection. No text is rewritten or translated.
+
+CONFIGURATION                                                  *rosetta-config*
+
+Use require('rosetta').configure(opts). Each call resolves built-ins plus only
+that call's options, replacing previous overrides. Invalid candidates preserve
+configuration and live state. Success does not mutate live workbench state.
+
+Top-level options and defaults: >lua
+    {
+      languages = { 'ca', 'de', 'en' },
+      variants = {}, -- identity -> registered default variant ID
+      registry = {}, -- additive new identities; see README
+      provider = {
+        base_url = false, model = false, allow_http = false,
+        profiles = {}, generation = { temperature = 0.2 },
+        -- discovery = function(decoded_catalog) return {models=...,profiles=...} end
+      },
+      credentials = {
+        env = 'ROSETTA_API_KEY', command = false,
+        timeout_ms = 10000, max_bytes = 16384,
+      },
+      http = {
+        executable = 'curl', timeout_ms = 30000,
+        body_bytes = 8388608, header_bytes = 65536, stderr_bytes = 16384,
+      },
+      checker = {
+        enabled = false, cmd = { 'ltex-ls-plus' }, settings = {},
+        debounce_ms = 300, locales = {}, hosted = false,
+      },
+      corrections = {
+        max_suggestions = 20, timeout_ms = 25, action_timeout_ms = 500,
+        max_line_bytes = 4096, max_word_bytes = 128,
+        max_actions = 64, max_bytes = 16384,
+      },
+      layout = { min_columns = 45 },
+    }
+<
+Endpoint/model have no vendor defaults. profiles[model] must define context,
+completion, overhead, min_output, expansion, reasoning_tokens,
+reasoning_shares_completion, budget_field, probe_tokens, estimate(text), and
+estimator_note. supports permits temperature, top_p, and reasoning_effort only
+when explicitly supported. Optional chat=false excludes incompatible models.
+See README for a complete profile schema example and estimator assumptions.
+
+Credentials: a configured command array takes precedence over the environment.
+For shell syntax use {'bash','-c','trusted command'} or zsh explicitly. No
+interactive startup is assumed. Failure has no environment fallback. Output
+is only the key, optionally one LF/CRLF terminator. Secrets do not enter curl
+arguments, request files, logs, or notifications. Limits apply during collection.
+
+Provider profile/credentials apply on reconnect or activation after stop.
+HTTP limits apply per next dispatch. Checker profiles apply on registration
+creation/effective locale change, not provider stop/start. Rename retains the
+captured checker profile. Registry snapshots survive removal of custom additions.
+
+Probes are real generation calls and may cost money/use rate limits. They use
+no pane text. Generation-route 401/403/429 requires reconnect or stop/start.
+Discovery failure alone does not revoke readiness. Same-endpoint selection is
+retained; a new endpoint uses its configured initial model.
+
+UNDO AND LOGICAL TEXT                                           *rosetta-undo*
+
+Results wait for Normal mode before application. Requests are not queued.
+Pending results are revalidated at delivery. Stop, reconnect, superseding run,
+registration or locale invalidation can discard them before application.
+
+Manual target edits after dispatch are intentionally replaceable. One native
+undo restores text immediately before delivery. Typing before/after is isolated.
+Identical output creates no undo entry. Nonmodifiable targets, nonpositive
+effective 'undolevels', and 'cpoptions' containing u are ineligible; Rosetta
+never changes those options to force eligibility.
+
+Source lines join with LF. Output splits on every LF retaining empty segments.
+A final LF means a final empty logical line, not an 'endofline' instruction.
+Invalid UTF-8, NUL (including newline bytes inside a Neovim line), CR, and empty
+output are rejected. Accepted spaces and fences are not trimmed. File write
+options, registers, clipboard, and save hooks remain native.
+
+FILES AND RESTORATION                                           *rosetta-files*
+
+IMPORTANT: :write to a default session path is NOT a durable export. Explicitly
+owned backing files are removed at buffer disposal/exit. Use :write /durable/path
+for a copy, or :saveas /durable/path to rename. An already owned path remains a
+session save. Rosetta itself never saves translated text.
+
+Closing a view/tab retains a loaded registration. Unload/delete retires it;
+layout restores a new empty registration/path, never recovered text. Rename
+preserves membership and Markdown checking; URI-bound corrections invalidate.
+Removing a language through start leaves its former buffer as ordinary text.
+
+Cleanup uses an ownership ledger, not directory sweeping. Unknown files,
+exports, swap/undo/ShaDa artifacts, dictionaries, and external preferences are
+not removed. Cleanup is best-effort and does not run on a cancelled quit.
+After a crash, inspect platform temporary rosetta-* directories, verify no
+live instance owns them, and remove stale files manually. No secure erasure
+or provider-side retention guarantee applies.
+
+CHECKING                                                       *rosetta-checking*
+
+Native spelling uses normal lookup and user 'spellfile' stores. Missing resources
+do not trigger downloads. Native [s, ]s, z=, zg are independent of LSP actions.
+Each supported LTeX+ locale uses a dedicated owned client and captured profile.
+Ordinary clients must exclude buffers with b:rosetta_owned before attachment.
+See docs/integrations.md for the complete profile and ownership contract.
+
+checker.locales maps verified deployed-backend language tags to true. Hosted-only
+tags require checker.hosted=true. settings.ltex uses edit-time checking and
+flags.debounce_text_changes is 300 ms by default. Directives that might override
+document locale are reported as unverified. No text is injected for checking.
+
+Correction completion is gated off for all consumers pending complete G-02
+acceptance evidence. The in-process LSP backend is a development interface.
+Native z=, diagnostics, and ordinary actions remain available. Supplied LTeX+
+persistence command handlers refuse before writing; user storage integration
+must independently verify context, every writer, and cross-instance refresh.
+
+LAYOUT AND STATUS                                              *rosetta-layout*
+
+One designated pane per language is managed. Columns need min_columns usable
+text width excluding gutters, otherwise use rows. Terminal shrink can switch
+columns to rows; growth cannot switch back. :Rosetta layout explicitly retries.
+Ordinary split resizing and auxiliary-window changes never auto-reflow.
+
+Auxiliary windows, duplicate views, and unrelated replacement buffers are
+protected. Unsafe split trees retain their layout; move/close auxiliaries then
+run :Rosetta layout. Partial split creation preserves committed buffers. Resize
+never resurrects closed panes/tabs or creates registrations.
+
+Winbars show language/variant, effective checking, and translation status.
+Precedence: stopped, preparation/not-ready, running/waiting, request error,
+pending language/variant change, ready/success. Pending settings clear only on
+an accepted run capturing that pane. Language changed outranks Variant changed.
+Later user window-option overrides are preserved.
+
+LUA API                                                        *rosetta-api*
+
+Expected failures return nil, {code=...,message=...}; messages are sanitized.
+Public operations: >lua
+    local r = require('rosetta')
+    r.configure(opts)                    -- true or nil,error
+    r.start(languages, opts)             -- nil languages means defaults
+    r.run(opts)                         -- current buffer at invocation
+    r.stop()                            -- true; idempotent before startup
+    r.layout(opts)                      -- remembered list
+    r.reconnect(opts)
+    r.model(opts)                        -- picker
+    local ref = r.registration(bufnr)    -- nil/0 means current buffer
+    r.variant(ref, opts)                -- nil ref captures current buffer
+    r.reassign(ref, language)            -- explicit opaque registration
+    r.status()                          -- sanitized state snapshot
+<
+opts may contain on_complete(result). Async operations return {accepted=true,...}
+before completion. Callbacks are scheduled once for accepted operations, including
+cancellation. Empty runs return/callback {noop=true}. Run completion reports
+{id=...,outcomes={[language]='succeeded'|'failed'|'cancelled'}}. Provider callbacks
+report readiness/model/generation or cancellation. Picker dismissal starts no
+operation and has no completion callback.
+
+Retain opaque registration handles for asynchronous calls. Retired handles fail
+instead of finding a replacement by language/buffer number. Reassign while stopped
+preserves text, path, pane, and ownership. Duplicate identities (even missing
+slots) reject reassignment. No reassignment command/mapping is installed.
+
+MAPPINGS                                                       *rosetta-mappings*
+
+No default user keys are imposed. Available deferred actions:
+<Plug>(RosettaStart)                                            *<Plug>(RosettaStart)*
+<Plug>(RosettaRun)                                              *<Plug>(RosettaRun)*
+<Plug>(RosettaStop)                                             *<Plug>(RosettaStop)*
+<Plug>(RosettaLayout)                                           *<Plug>(RosettaLayout)*
+<Plug>(RosettaReconnect)                                        *<Plug>(RosettaReconnect)*
+<Plug>(RosettaVariant)                                          *<Plug>(RosettaVariant)*
+<Plug>(RosettaModel)                                            *<Plug>(RosettaModel)*
+
+Example: >lua
+    vim.keymap.set('n', '<leader>rr', '<Plug>(RosettaRun)')
+<
+HEALTH                                                         *rosetta-health*
+
+:checkhealth rosetta performs local checks without network, credential commands,
+checker startup, or paid probes. Missing optional dependencies are reported.
+
+DEVELOPMENT                                                    *rosetta-development*
+
+See docs/architecture.md, docs/testing.md, docs/compatibility.md, and
+docs/feasibility.md. Run `mise run check` with mise, Neovim, and LuaLS installed.
+Mise manages StyLua using mise.toml.
+Tests use isolated Neovim instances and controlled provider/LSP adapters.
+No live provider credentials or hidden dependency downloads are required.
+
+License: MIT. Behavioral contracts: this help file. Internal architecture and
+extension contracts: docs/architecture.md. Configuration examples: README.md.
+
+vim:tw=78:ts=8:sw=4:sts=4:ft=help:noet:
